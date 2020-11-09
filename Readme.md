@@ -28,7 +28,7 @@
 ##### 注意：如果第一次失败可以再运行一次
 
 ##### 采集指令运行成功后的样图：
-![](./figures/image1.jpg)
+![image](./figures/image1.jpg)
 
 #### 2、_raw_ 数据处理
 本项目使用的 _sensor_ 输出的 _raw_ 数据的顺序是 _RG/GB_，所以在处理 _raw_ 数据是要先将其转换成 _R_ 、_Gr_ 、 _Gb_ 、 _B_ 四个通道的数据。具体代码实现在`./tools/tools.py`中的 `oneimg2npy_()` 函数中。 
