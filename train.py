@@ -22,7 +22,7 @@ from utils.train_tools import *
 def parse_args():
     """Command-line argument parser for training."""
 
-    # New parser
+    '# New parser'
     parser = ArgumentParser(description='PyTorch implementation of denoise from Yuan. (2020)')
 
     "dataset"
