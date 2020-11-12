@@ -4,7 +4,9 @@
 import torch
 import rawpy
 import cv2, os
+import imageio
 import numpy as np
+from scipy import misc
 from torch.utils.data import Dataset, DataLoader
 
 class supervision_dataset(Dataset):
@@ -259,37 +261,263 @@ class isp_dataset(Dataset):
 
         return source, rgb_half, target
 
-# if __name__ == "__main__":
-#
-#     import torch.nn as nn
-#     def edge_conv2d(im):
-#         # 用nn.Conv2d定义卷积操作
-#         conv_op = nn.Conv2d(4, 3, kernel_size=3, padding=1, bias=False)
-#
-#         sobel_kernel = torch.tensor(((-1, -1, -1), (-1, 8, -1), (-1, -1, -1)), dtype=torch.float32)
-#         sobel_kernel = torch.reshape(sobel_kernel, (1, 1, 3, 3))
-#         sobel_kernel = sobel_kernel.repeat(3, 4, 1, 1)
-#         conv_op.weight.data = sobel_kernel.cuda()
-#         edge_detect = conv_op(im)
-#
-#         return edge_detect
-#
-#     root_dir = '/media/ps/2tb/yjz/MY-ISP/data/new/val.txt'
-#     dataset = isp_dataset(root_dir=root_dir, crop_size=64, is_train=False)
-#     loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=1, pin_memory=True, drop_last=False)
-#
-#     for idx, (source, target) in enumerate(loader):
-#         print(idx)
-#
-#         source = source.cuda(non_blocking=True)
-#         out = edge_conv2d(source)
-#
-#         output = out.permute(0, 2, 3, 1).cpu().data.numpy()
-#         output = np.minimum(np.maximum(output, 0), 1)
-#         output = (output[0, :, :, :] * 255.).astype(np.uint8)
-#         output_bgr = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
-#         cv2.imwrite("out2.jpg", output_bgr)
-#         print(out.shape)
-#
-#         # print(source.shape, H_lr.shape, target.shape)
-#         # print(list[0].shape, list[1].shape, list[2].shape, list[3].shape)
+#################################################################################
+def extract_bayer_channels(raw):
+
+    # Reshape the input bayer image
+
+    ch_B  = raw[1::2, 1::2]
+    ch_Gb = raw[0::2, 1::2]
+    ch_R  = raw[0::2, 0::2]
+    ch_Gr = raw[1::2, 0::2]
+
+    RAW_combined = np.dstack((ch_R, ch_Gr, ch_Gb, ch_B))
+    # RAW_combined = np.dstack((ch_B, ch_Gb, ch_R, ch_Gr))
+    RAW_norm = RAW_combined.astype(np.float32) / (4 * 255)
+
+    return RAW_norm
+
+class isp_all_dataset(Dataset):
+    def __init__(self, root_dir, crop_size, is_train=True):
+
+        self.crop_size = crop_size
+        self.is_train = is_train
+        self.raw, self.rgb = [], []
+
+        with open(root_dir, "rb") as f:
+            for line in f.readlines():
+                a = ' '.encode()
+                self.raw.append(line.split(a)[0])
+                self.rgb.append(line.split(a)[1][:-2])
+
+    def __len__(self):
+        """Returns length of dataset."""
+        print("Dataset--------->len=", len(self.raw))
+        return len(self.raw)
+
+    def __getitem__(self, index):
+
+        # index = 100
+
+        raw_path = str(self.raw[index], encoding="utf-8")
+        rgb_path = str(self.rgb[index], encoding="utf-8")
+
+        if (os.path.dirname(rgb_path)).endswith('canon'):
+            raw = np.asarray(imageio.imread(raw_path))
+            raw = extract_bayer_channels(raw)
+            source = raw.transpose((2, 0, 1))
+
+            rgb = np.asarray(misc.imread(rgb_path))
+            rgb = np.float32(rgb) / 255.0
+            target = rgb.transpose((2, 0, 1))
+
+        else:
+            raw = np.load(raw_path)
+            rgb = np.load(rgb_path)
+
+            _, h, w = raw.shape
+            raw = (raw / 4095.).astype(np.float32)
+            rgb = (rgb / 255.).astype(np.float32)
+
+            if self.is_train:
+                "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"
+                i = torch.randint(0, h - self.crop_size + 1, (1,)).item()
+                j = torch.randint(0, w - self.crop_size + 1, (1,)).item()
+                source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
+                target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
+            else:
+                i = (h - self.crop_size) // 2
+                j = (w - self.crop_size) // 2
+                source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
+                target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
+
+        # if (os.path.dirname(rgb_path)).endswith('canon'):
+        #     raw = (raw * 255.).astype(np.uint8)
+        #     cv2.imwrite("raw.jpg", raw)
+        #
+        #     rgb = (rgb * 255.).astype(np.uint8)
+        #     rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        #     cv2.imwrite("rgb.jpg", rgb)
+        #
+        #     source = (source * 255.).astype(np.uint8)
+        #     cv2.imwrite("source.jpg", source[0])
+        #
+        #     target = np.transpose(target, (1, 2, 0))
+        #     target = (target * 255.).astype(np.uint8)
+        #     target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
+        #     cv2.imwrite("target.jpg", target)
+        # else:
+        #     raw = (raw * 255.).astype(np.uint8)
+        #     cv2.imwrite("raw.jpg", raw[0])
+        #
+        #     rgb = np.transpose(rgb, (1, 2, 0))
+        #     rgb = (rgb * 255.).astype(np.uint8)
+        #     rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        #     cv2.imwrite("rgb.jpg", rgb)
+        #
+        #     source = (source * 255.).astype(np.uint8)
+        #     cv2.imwrite("source.jpg", source[0])
+        #
+        #     target = np.transpose(target, (1, 2, 0))
+        #     target = (target * 255.).astype(np.uint8)
+        #     target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
+        #     cv2.imwrite("target.jpg", target)
+
+        if self.is_train:
+            '随机翻转'
+            if np.random.random() > 0.5:
+                source = np.flip(source, axis=0)
+                target = np.flip(target, axis=0)
+            if np.random.random() > 0.5:
+                source = np.flip(source, axis=1)
+                target = np.flip(target, axis=1)
+            if np.random.random() > 0.5:
+                source = np.rot90(source, 2)
+                target = np.rot90(target, 2)
+            source = source.copy()
+            target = target.copy()
+
+        source = torch.from_numpy(source)
+        target = torch.from_numpy(target)
+
+        return source, target
+
+#################################################################################
+
+class level_dataset(Dataset):
+    def __init__(self, root_dir, crop_size, scale, is_train=True):
+
+        self.crop_size = crop_size
+        self.is_train = is_train
+        self.scale = scale
+        self.raw, self.rgb = [], []
+
+        with open(root_dir, "rb") as f:
+            for line in f.readlines():
+                a = ' '.encode()
+                self.raw.append(line.split(a)[0])
+                self.rgb.append(line.split(a)[1][:-1])
+
+    def __len__(self):
+        """Returns length of dataset."""
+        print("Dataset--------->len=", len(self.raw))
+        return len(self.raw)
+
+    def __getitem__(self, index):
+
+        raw = np.load(str(self.raw[index], encoding="utf-8"))
+        rgb = np.load(str(self.rgb[index], encoding="utf-8"))
+
+        _, h, w = raw.shape
+
+        # if self.is_train:
+        #     "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"
+        #     i = torch.randint(0, h - self.crop_size + 1, (1,)).item()
+        #     j = torch.randint(0, w - self.crop_size + 1, (1,)).item()
+        #     source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
+        #     target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
+        # else:
+        #     i = (h - self.crop_size) // 2
+        #     j = (w - self.crop_size) // 2
+        #     source = raw[:, i:i + self.crop_size * 4, j:j + self.crop_size * 4]
+        #     target = rgb[:, i * 2:(i + self.crop_size * 4) * 2, j * 2:(j + self.crop_size * 4) * 2]
+
+        "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"
+        i = torch.randint(0, h - self.crop_size + 1, (1,)).item()
+        j = torch.randint(0, w - self.crop_size + 1, (1,)).item()
+        source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
+        target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
+
+        # if self.is_train:
+        #     "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"
+        #     i = torch.randint(0, h - self.crop_size + 1, (1,)).item()
+        #     j = torch.randint(0, w - self.crop_size + 1, (1,)).item()
+        #     source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
+        #     target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
+        # else:
+        #     i = (h - self.crop_size) // 2
+        #     j = (w - self.crop_size) // 2
+        #     source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
+        #     target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
+
+        _, hh, ww = target.shape
+        target = cv2.resize(np.transpose(target, (1, 2, 0)), (int(ww // self.scale), int(hh // self.scale)), interpolation=cv2.INTER_CUBIC)
+
+        source = (source / 4095.).astype(np.float32)
+        target = (np.transpose(target, (2, 0, 1)) / 255.).astype(np.float32)
+
+        # raw = (raw / 4095. * 255.).astype(np.uint8)
+        # cv2.imwrite("raw.jpg", raw[0])
+        #
+        # rgb = np.transpose(rgb, (1, 2, 0))
+        # rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        # cv2.imwrite("rgb.jpg", rgb)
+        #
+        # source = (source * 255.).astype(np.uint8)
+        # cv2.imwrite("source.jpg", source[0])
+        #
+        # target = (target * 255.).astype(np.uint8)
+        # target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
+        # cv2.imwrite("target.jpg", target)
+
+        if self.is_train:
+            '随机翻转'
+            if np.random.random() > 0.5:
+                source = np.flip(source, axis=0)
+                target = np.flip(target, axis=0)
+            if np.random.random() > 0.5:
+                source = np.flip(source, axis=1)
+                target = np.flip(target, axis=1)
+            if np.random.random() > 0.5:
+                source = np.rot90(source, 2)
+                target = np.rot90(target, 2)
+            source = source.copy()
+            target = target.copy()
+
+        source = torch.from_numpy(source)
+        target = torch.from_numpy(target)
+
+        return source, target
+
+if __name__ == "__main__":
+
+    import torch.nn as nn
+    def edge_conv2d(im):
+        # 用nn.Conv2d定义卷积操作
+        conv_op = nn.Conv2d(4, 3, kernel_size=3, padding=1, bias=False)
+
+        sobel_kernel = torch.tensor(((-1, -1, -1), (-1, 8, -1), (-1, -1, -1)), dtype=torch.float32)
+        sobel_kernel = torch.reshape(sobel_kernel, (1, 1, 3, 3))
+        sobel_kernel = sobel_kernel.repeat(3, 4, 1, 1)
+        conv_op.weight.data = sobel_kernel.cuda()
+        edge_detect = conv_op(im)
+
+        return edge_detect
+
+    root_dir = '/media/ps/2tb/yjz/MY-ISP/data/val_all.txt'
+
+    "# 不分级训练"
+    dataset = isp_all_dataset(root_dir=root_dir, crop_size=224, is_train=False)
+
+    "# 分级训练"
+    # level = 2
+    # scale = 2 ** level
+    # dataset = level_dataset(root_dir=root_dir, crop_size=64, scale=scale, is_train=False)
+
+    loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=1, pin_memory=True, drop_last=False)
+
+    for idx, (source, target) in enumerate(loader):
+        print(idx)
+
+        # source = source.cuda(non_blocking=True)
+        # out = edge_conv2d(source)
+        #
+        # output = out.permute(0, 2, 3, 1).cpu().data.numpy()
+        # output = np.minimum(np.maximum(output, 0), 1)
+        # output = (output[0, :, :, :] * 255.).astype(np.uint8)
+        # output_bgr = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+        # cv2.imwrite("out2.jpg", output_bgr)
+        # print(out.shape)
+        #
+        # # print(source.shape, H_lr.shape, target.shape)
+        # # print(list[0].shape, list[1].shape, list[2].shape, list[3].shape)

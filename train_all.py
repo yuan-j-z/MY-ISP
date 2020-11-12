@@ -26,10 +26,10 @@ def parse_args():
     parser = ArgumentParser(description='PyTorch implementation of denoise from Yuan. (2020)')
 
     "dataset"
-    parser.add_argument('-t', '--train-dir', help='train path', default='./data/new/train.txt')
-    parser.add_argument('-v', '--valid-dir', help='val path', default='./data/new/val.txt')
+    parser.add_argument('-t', '--train-dir', help='train path', default='./data/train_all.txt')
+    parser.add_argument('-v', '--valid-dir', help='val path', default='./data/val_all.txt')
     parser.add_argument('-n', '--data-type', help='data type', choices=['rgbdata'], default='rgbdata', type=str)
-    parser.add_argument('-c', '--crop-size', help='random crop size', default=64, type=int)
+    parser.add_argument('-c', '--crop-size', help='random crop size', default=224, type=int)
 
     "augmentations"
     parser.add_argument("--use_moa", action="store_true", default=True)
@@ -41,10 +41,10 @@ def parse_args():
     parser.add_argument("--aux_alpha", type=float, default=1.2)
 
     "models"
-    parser.add_argument('-o', '--outtype', help='output type', choices=['Unet_SR', 'Unet_SR_small'],
-                        default='Unet_SR', type=str)
+    parser.add_argument('-o', '--outtype', help='output type', choices=['Unet_all'],
+                        default='Unet_all', type=str)
     parser.add_argument('-C', '--channel', help='the input of channel', default=32, type=int)
-    parser.add_argument('--model-path', help='model save path', default='./model/Unet_SR')
+    parser.add_argument('--model-path', help='model save path', default='./model/Unet_all')
 
     "training setups"
     parser.add_argument('-l', '--loss', choices=['l1', 'l2'], default='l1', type=str)
@@ -59,10 +59,10 @@ def parse_args():
 
     "misc"
     parser.add_argument('--half', default=False)
-    parser.add_argument('--apex', default=False)
-    parser.add_argument('--environ', default="0", type=str)
+    parser.add_argument('--apex', default=True)
+    parser.add_argument('--environ', default="1", type=str)
     parser.add_argument('--teacher', default=None, type=str)
-    parser.add_argument('--resume-ckpt',  default='./model/Unet_SR/weights/best_psnr/best_psnr.pt', type=str)
+    parser.add_argument('--resume-ckpt',  default=None, type=str)
     parser.add_argument('--cuda', help='use cuda', action='store_true', default=True)
     parser.add_argument('--report-interval', help='batch report interval', default=0, type=int)
     parser.add_argument('--plot-stats', help='plot stats after every epoch', action='store_true', default=True)
@@ -70,7 +70,7 @@ def parse_args():
     return parser.parse_args()
 
 def save_epoch_result(epoch, idx, target, val_output, teacher_out=None, train=False):
-    if (epoch + 1) % 100 == 0 and (idx + 1) % 2 == 0:
+    if (epoch + 1) % 10 == 0 and (idx + 1) % 2 == 0:
         if train:
             path1 = os.path.join(params.model_path, 'train_result')
             path2 = os.path.join(path1, 'epoch' + str(epoch + 1))
@@ -113,13 +113,15 @@ def save_epoch_result(epoch, idx, target, val_output, teacher_out=None, train=Fa
 
 def train_model():
 
+    global teacher_model, teacher_out
+
     torch.backends.cudnn.deterministic = True
     print("CUDA visible devices: " + str(torch.cuda.device_count()))
 
-    train_data = dataset.isp_dataset(params.train_dir, crop_size=params.crop_size)
+    train_data = dataset.isp_all_dataset(params.train_dir, crop_size=params.crop_size)
     train_loader = DataLoader(train_data, batch_size=params.batch_size, shuffle=True, num_workers=params.workers_num, pin_memory=True, drop_last=True)
 
-    valid_data = dataset.isp_dataset(params.valid_dir, crop_size=params.crop_size, is_train=False)
+    valid_data = dataset.isp_all_dataset(params.valid_dir, crop_size=params.crop_size, is_train=False)
     valid_loader = DataLoader(valid_data, batch_size=1, shuffle=False, num_workers=1, pin_memory=True, drop_last=False)
 
     model = selet_model(outtype=params.outtype, channel=params.channel)
@@ -186,21 +188,19 @@ def train_model():
         time_meter = AvgMeter()
 
         model.train()
-        for batch_idx, (source, rgb_half, target) in enumerate(train_loader):
+        for batch_idx, (source, target) in enumerate(train_loader):
             batch_start = datetime.now()
             progress_bar(batch_idx, num_batches, params.report_interval, loss_meter.val)
 
             if use_cuda:
                 source = source.cuda(non_blocking=True)
-                rgb_half = rgb_half.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
             if params.teacher:
-                teacher_out, teacher_half= teacher_model(source)
+                teacher_out = teacher_model(source)
 
             if params.half:
                 source = source.half()
-                rgb_half = rgb_half.half()
                 target = target.half()
 
             '########################数据增强#########################'
@@ -231,7 +231,7 @@ def train_model():
             # # cv2.imwrite("a.png", a[:, :, 0]), cv2.imwrite("b.png", b[:, :, 0])
             '#########################################################'
 
-            out, half = model(source)
+            out = model(source)
 
             '########################数据增强#########################'
             # if aug == "cutout":
@@ -239,10 +239,9 @@ def train_model():
             '#########################################################'
 
             if params.teacher:
-                loss = LOSS(out, target) + LOSS(half, rgb_half) \
-                       + LOSS(out, teacher_out) * 0.5 + LOSS(half, teacher_half) * 0.5
+                loss = LOSS(out, target) + LOSS(out, teacher_out) * 0.5
             else:
-                loss = LOSS(out, target) + LOSS(half, rgb_half)
+                loss = LOSS(out, target)
             loss_meter.update(loss.item())
 
             optim.zero_grad()
@@ -276,27 +275,24 @@ def train_model():
         loss_val_meter = AvgMeter()
 
         with torch.no_grad():
-            for batch_idx, (val_source, val_rgb_half, val_target) in enumerate(valid_loader):
+            for batch_idx, (val_source, val_target) in enumerate(valid_loader):
                 if use_cuda:
                     val_source = val_source.cuda(non_blocking=True)
-                    val_rgb_half = val_rgb_half.cuda(non_blocking=True)
                     val_target = val_target.cuda(non_blocking=True)
 
                 if params.teacher:
-                    val_teacher_out, val_teacher_half = teacher_model(val_source)
+                    val_teacher_out = teacher_model(val_source)
 
                 if params.half:
                     val_source = val_source.half()
-                    val_rgb_half = val_rgb_half.half()
                     val_target = val_target.half()
 
-                val_out, val_half = model(val_source)
+                val_out = model(val_source)
 
                 if params.teacher:
-                    val_loss = LOSS(val_out, val_target) + LOSS(val_half, val_rgb_half) \
-                               + LOSS(val_out, val_teacher_out) * 0.5 + LOSS(val_half, val_teacher_half) * 0.5
+                    val_loss = LOSS(val_out, val_target) + LOSS(val_out, val_teacher_out) * 0.5
                 else:
-                    val_loss = LOSS(val_out, val_target) + LOSS(val_half, val_rgb_half)
+                    val_loss = LOSS(val_out, val_target)
                 loss_val_meter.update(val_loss.item())
 
                 psnr_output = torch.clamp(val_out, 0, 1).data.cpu()

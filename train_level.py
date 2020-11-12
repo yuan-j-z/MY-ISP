@@ -10,7 +10,6 @@ from argparse import ArgumentParser
 from torch.utils.data import DataLoader
 from torch.optim import Adam, SGD, lr_scheduler
 
-from Nets.SR_Net import *
 import dataset
 from utils.ssim import *
 from utils.utils import *
@@ -29,7 +28,7 @@ def parse_args():
     parser.add_argument('-t', '--train-dir', help='train path', default='./data/new/train.txt')
     parser.add_argument('-v', '--valid-dir', help='val path', default='./data/new/val.txt')
     parser.add_argument('-n', '--data-type', help='data type', choices=['rgbdata'], default='rgbdata', type=str)
-    parser.add_argument('-c', '--crop-size', help='random crop size', default=64, type=int)
+    parser.add_argument('-c', '--crop-size', help='random crop size', default=256, type=int)
 
     "augmentations"
     parser.add_argument("--use_moa", action="store_true", default=True)
@@ -41,28 +40,27 @@ def parse_args():
     parser.add_argument("--aux_alpha", type=float, default=1.2)
 
     "models"
-    parser.add_argument('-o', '--outtype', help='output type', choices=['Unet_SR', 'Unet_SR_small'],
-                        default='Unet_SR', type=str)
+    parser.add_argument('-o', '--outtype', help='output type', choices=['PyNET_smaller'], default='PyNET_smaller', type=str)
     parser.add_argument('-C', '--channel', help='the input of channel', default=32, type=int)
-    parser.add_argument('--model-path', help='model save path', default='./model/Unet_SR')
+    parser.add_argument('--model-path', help='model save path', default='./model/PyNET_smaller')
 
     "training setups"
-    parser.add_argument('-l', '--loss', choices=['l1', 'l2'], default='l1', type=str)
+    parser.add_argument('-l', '--loss', choices=['l1', 'l2'], default='l2', type=str)
     parser.add_argument('--workers-num', help='workers-num', default=8, type=int)
-    parser.add_argument('-b', '--batch-size', help='minibatch size', default=16, type=int)
+    parser.add_argument('-b', '--batch-size', help='minibatch size', default=50, type=int)
     parser.add_argument('-e', '--nb-epochs', help='number of epochs', default=2000, type=int)
     parser.add_argument('-lr', '--learning-rate', help='learning rate', default=1e-4, type=float)
     parser.add_argument('-a', '--adam', help='adam parameters', nargs='+', default=[0.9, 0.99, 1e-8], type=list)
     # 使用混合精度时打开
     # parser.add_argument('-a', '--adam', help='adam parameters', nargs='+', default=[0.9, 0.99, 1e-3], type=list)
 
-
     "misc"
     parser.add_argument('--half', default=False)
     parser.add_argument('--apex', default=False)
-    parser.add_argument('--environ', default="0", type=str)
+    parser.add_argument('--environ', default="0, 3", type=str)
     parser.add_argument('--teacher', default=None, type=str)
-    parser.add_argument('--resume-ckpt',  default='./model/Unet_SR/weights/best_psnr/best_psnr.pt', type=str)
+    parser.add_argument('--resume-ckpt',  default=None, type=str)
+    parser.add_argument('--level', help='level numbers', default=5, type=int)
     parser.add_argument('--cuda', help='use cuda', action='store_true', default=True)
     parser.add_argument('--report-interval', help='batch report interval', default=0, type=int)
     parser.add_argument('--plot-stats', help='plot stats after every epoch', action='store_true', default=True)
@@ -70,9 +68,9 @@ def parse_args():
     return parser.parse_args()
 
 def save_epoch_result(epoch, idx, target, val_output, teacher_out=None, train=False):
-    if (epoch + 1) % 100 == 0 and (idx + 1) % 2 == 0:
+    if params.level <= 1 and (epoch + 1) % 100 == 0 and (idx + 1) % 2 == 0:
         if train:
-            path1 = os.path.join(params.model_path, 'train_result')
+            path1 = os.path.join(params.model_path, 'level{}'.format(params.level), 'train_result')
             path2 = os.path.join(path1, 'epoch' + str(epoch + 1))
             if not os.path.isdir(params.model_path):
                 os.mkdir(params.model_path)
@@ -81,7 +79,7 @@ def save_epoch_result(epoch, idx, target, val_output, teacher_out=None, train=Fa
             if not os.path.isdir(path2):
                 os.mkdir(path2)
         else:
-            path1 = os.path.join(params.model_path, 'val_result')
+            path1 = os.path.join(params.model_path, 'level{}'.format(params.level), 'val_result')
             path2 = os.path.join(path1, 'epoch' + str(epoch + 1))
             if not os.path.isdir(path1):
                 os.mkdir(path1)
@@ -113,16 +111,19 @@ def save_epoch_result(epoch, idx, target, val_output, teacher_out=None, train=Fa
 
 def train_model():
 
+    global teacher_model, teacher_out, loss_vgg, MS_SSIM, loss_all
+
     torch.backends.cudnn.deterministic = True
     print("CUDA visible devices: " + str(torch.cuda.device_count()))
 
-    train_data = dataset.isp_dataset(params.train_dir, crop_size=params.crop_size)
+    scale = 2 ** params.level
+    train_data = dataset.level_dataset(params.train_dir, scale=scale, crop_size=params.crop_size)
     train_loader = DataLoader(train_data, batch_size=params.batch_size, shuffle=True, num_workers=params.workers_num, pin_memory=True, drop_last=True)
 
-    valid_data = dataset.isp_dataset(params.valid_dir, crop_size=params.crop_size, is_train=False)
+    valid_data = dataset.level_dataset(params.valid_dir, scale=scale, crop_size=params.crop_size, is_train=False)
     valid_loader = DataLoader(valid_data, batch_size=1, shuffle=False, num_workers=1, pin_memory=True, drop_last=False)
 
-    model = selet_model(outtype=params.outtype, channel=params.channel)
+    model = selet_level_model(outtype=params.outtype, level=params.level, channel=params.channel)
     LOSS = selet_loss(loss=params.loss)
 
     VGG_19 = vgg_19()
@@ -133,6 +134,8 @@ def train_model():
     use_cuda = torch.cuda.is_available() and params.cuda
     if use_cuda:
         LOSS = LOSS.cuda()
+        VGG_19.cuda()
+        MS_SSIM = MSSSIM()
         model = model.cuda()
         if not params.apex:
             model = torch.nn.DataParallel(model)
@@ -148,6 +151,9 @@ def train_model():
             print("loading the teacher model weights!")
             print(model.load_state_dict(torch.load(params.teacher), strict=False))
             print(teacher_model.load_state_dict(torch.load(params.teacher), strict=True))
+
+        if params.level < 5:
+            load_weights(model=model, level=params.level, model_path=params.model_path, use_cuda=use_cuda)
 
         if params.resume_ckpt:
             model.load_state_dict(torch.load(params.resume_ckpt), strict=True)
@@ -186,21 +192,19 @@ def train_model():
         time_meter = AvgMeter()
 
         model.train()
-        for batch_idx, (source, rgb_half, target) in enumerate(train_loader):
+        for batch_idx, (source, target) in enumerate(train_loader):
             batch_start = datetime.now()
             progress_bar(batch_idx, num_batches, params.report_interval, loss_meter.val)
 
             if use_cuda:
                 source = source.cuda(non_blocking=True)
-                rgb_half = rgb_half.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
 
             if params.teacher:
-                teacher_out, teacher_half= teacher_model(source)
+                teacher_out = teacher_model(source)
 
             if params.half:
                 source = source.half()
-                rgb_half = rgb_half.half()
                 target = target.half()
 
             '########################数据增强#########################'
@@ -231,7 +235,7 @@ def train_model():
             # # cv2.imwrite("a.png", a[:, :, 0]), cv2.imwrite("b.png", b[:, :, 0])
             '#########################################################'
 
-            out, half = model(source)
+            out = model(source)
 
             '########################数据增强#########################'
             # if aug == "cutout":
@@ -239,18 +243,32 @@ def train_model():
             '#########################################################'
 
             if params.teacher:
-                loss = LOSS(out, target) + LOSS(half, rgb_half) \
-                       + LOSS(out, teacher_out) * 0.5 + LOSS(half, teacher_half) * 0.5
+                loss = LOSS(out, target)  + LOSS(out, teacher_out) * 0.5
             else:
-                loss = LOSS(out, target) + LOSS(half, rgb_half)
-            loss_meter.update(loss.item())
+                loss = LOSS(out, target)
+
+            if params.level < 5:
+                out_vgg, target_vgg = VGG_19(normalize_batch(out)), VGG_19(normalize_batch(target))
+                loss_vgg = LOSS(out_vgg, target_vgg)
+
+            if params.level == 5 or params.level == 4:
+                loss_all = loss
+            if params.level == 3 or params.level == 2:
+                loss_all = loss *10 + loss_vgg
+            if params.level == 1:
+                loss_all = loss * 10 + loss_vgg
+            if params.level == 0:
+                loss_ssim = MS_SSIM(out, target)
+                loss_all = loss + loss_vgg + (1 - loss_ssim) * 0.4
+
+            loss_meter.update(loss_all.item())
 
             optim.zero_grad()
             if params.apex:
-                with amp.scale_loss(loss, optim) as scaled_loss:
+                with amp.scale_loss(loss_all, optim) as scaled_loss:
                     scaled_loss.backward()
             else:
-                loss.backward()
+                loss_all.backward()
             optim.step()
 
             if params.teacher:
@@ -274,30 +292,37 @@ def train_model():
         valid_start = datetime.now()
         psnr_meter = AvgMeter()
         loss_val_meter = AvgMeter()
+        vgg_val_meter = AvgMeter()
+        ssim_val_meter = AvgMeter()
 
         with torch.no_grad():
-            for batch_idx, (val_source, val_rgb_half, val_target) in enumerate(valid_loader):
+            for batch_idx, (val_source, val_target) in enumerate(valid_loader):
                 if use_cuda:
                     val_source = val_source.cuda(non_blocking=True)
-                    val_rgb_half = val_rgb_half.cuda(non_blocking=True)
                     val_target = val_target.cuda(non_blocking=True)
 
                 if params.teacher:
-                    val_teacher_out, val_teacher_half = teacher_model(val_source)
+                    val_teacher_out = teacher_model(val_source)
 
                 if params.half:
                     val_source = val_source.half()
-                    val_rgb_half = val_rgb_half.half()
                     val_target = val_target.half()
 
-                val_out, val_half = model(val_source)
+                val_out = model(val_source)
 
                 if params.teacher:
-                    val_loss = LOSS(val_out, val_target) + LOSS(val_half, val_rgb_half) \
-                               + LOSS(val_out, val_teacher_out) * 0.5 + LOSS(val_half, val_teacher_half) * 0.5
+                    val_loss = LOSS(val_out, val_target) + LOSS(val_out, val_teacher_out) * 0.5
                 else:
-                    val_loss = LOSS(val_out, val_target) + LOSS(val_half, val_rgb_half)
+                    val_loss = LOSS(val_out, val_target)
                 loss_val_meter.update(val_loss.item())
+
+                if params.level < 5:
+                    val_out_vgg, val_target_vgg = VGG_19(normalize_batch(val_out)), VGG_19(normalize_batch(val_target))
+                    val_loss_vgg = LOSS(val_out_vgg, val_target_vgg)
+                    vgg_val_meter.update(val_loss_vgg.item())
+                if params.level < 2:
+                    val_loss_ssim = MS_SSIM(val_out, val_target)
+                    ssim_val_meter.update(val_loss_ssim.item())
 
                 psnr_output = torch.clamp(val_out, 0, 1).data.cpu()
                 psnr_target = torch.clamp(val_target, 0, 1).data.cpu()
@@ -313,7 +338,14 @@ def train_model():
         valid_time = time_elapsed_since(valid_start)[0]
         psnr_avg = psnr_meter.avg
 
-        print("loss: %.4f, psnr: %.4f" % (valid_loss, psnr_avg))
+        if params.level < 2:
+            print("loss: %.4f, psnr: %.4f, vgg: %.4f, ms-ssim: %.4f"
+                  % (val_loss, psnr_avg, val_loss_vgg, val_loss_ssim))
+        elif params.level < 5:
+            print("loss: %.4f, psnr: %.4f, vgg: %.4f"
+                  % (val_loss, psnr_avg, val_loss_vgg))
+        else:
+            print("loss: %.4f, psnr: %.4f" % (valid_loss, psnr_avg))
 
         show_on_epoch_end(epoch_time, valid_time, valid_loss, psnr_avg)
         scheduler.step(valid_loss)
@@ -323,9 +355,12 @@ def train_model():
         stats['valid_loss'].append(valid_loss)
         stats['valid_psnr'].append(psnr_avg)
 
-        ckpt_dir = os.path.join(params.model_path, 'weights')
+        level_path = os.path.join(params.model_path, 'level{}'.format(params.level))
+        ckpt_dir = os.path.join(level_path, 'weights')
         if not os.path.isdir(params.model_path):
             os.mkdir(params.model_path)
+        if not os.path.isdir(level_path):
+            os.mkdir(level_path)
         if not os.path.isdir(ckpt_dir):
             os.mkdir(ckpt_dir)
 
@@ -354,7 +389,7 @@ def train_model():
         if params.plot_stats:
             loss_str = '{} loss'.format(params.loss.upper())
 
-            plot_path1 = os.path.join(params.model_path, 'result_plt')
+            plot_path1 = os.path.join(level_path, 'result_plt')
             if not os.path.isdir(plot_path1):
                 os.mkdir(plot_path1)
             plot_per_epoch(plot_path1, 'Train loss', stats['train_loss'], loss_str)

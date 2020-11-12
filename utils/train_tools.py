@@ -4,6 +4,7 @@
 import torch, os
 from torch import nn
 from Nets.SR_Net import *
+from Nets.PYNET import *
 from utils.ssim import *
 from collections import OrderedDict
 
@@ -13,11 +14,23 @@ def selet_model(outtype, channel=64):
         model = Unet_SR(channel=channel, is_train=True)
     elif outtype == 'Unet_SR_small':
         model = Unet_SR_small(channel=channel, is_train=True)
+    elif outtype == 'Unet_all':
+        model = Unet_all()
     else:
         assert False, 'Not supported outtype:{}'.format(outtype)
     print("\033[32musing %s \033[0m" % (outtype))
 
     return model
+
+def selet_level_model(outtype, level, channel=64):
+    if outtype == 'PyNET_smaller':
+        model = PyNET_smaller(level=level, channel=channel, instance_norm=True, instance_norm_level_1=True)
+    else:
+        assert False, 'Not supported outtype:{}'.format(outtype)
+    print("\033[32musing %s \033[0m" % (outtype + "_level" + str(level)))
+
+    return model
+
 
 def selet_loss(loss='l1'):
     if loss == 'l1':
@@ -44,8 +57,8 @@ def check_load_weights(model, weights_path, use_cuda=True):
 
 def load_weights(model, level, model_path, use_cuda=True):
 
-    weights_path = os.path.join(model_path, 'weights')
-    ckpt_fname = os.path.join(weights_path, 'level{}'.format(level + 1), 'best_psnr', 'best_psnr.pt')
+    weights_path = os.path.join(model_path, 'level{}'.format(level + 1), 'weights')
+    ckpt_fname = os.path.join(weights_path, 'best_psnr', 'best_psnr.pt')
     print('Loading checkpoint from: {}'.format(ckpt_fname))
 
     if use_cuda:

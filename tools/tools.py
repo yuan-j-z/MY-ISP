@@ -131,7 +131,6 @@ def oneimg2npy_(root_dir, out_path):
                         B[int(x / 2)][int(y / 2)] = bayer[x][y + 1]
 
             out = np.stack((R, Gr, Gb, B))
-            # out = out.astype(np.float32)
 
             if not os.path.exists(out_path):
                 os.makedirs(out_path)
@@ -144,7 +143,6 @@ def oneimg2npy_(root_dir, out_path):
             print("saved: {}".format(file))
 
             f.close()
-        print("raw finished")
 
         '# 读取rgb数据时使用'
         # filelist.sort(key=lambda x: int((x.split('_', 5)[5]).split('_')[0]))
@@ -168,10 +166,10 @@ def oneimg2npy_(root_dir, out_path):
 
         print("{} finised".format(case))
 
-    print("yuv finished")
+    print("All cases had finished!")
 
 if __name__ == '__main__':
-    # _ = yuv2bgr(video_dir="D:\\DATA\\raw-yuv\\yuv", height=1080, width=1920, startfrm=0)
+    # _ = yuv2bgr(video_dir="D:\\DATA\\raw-yuv\\new\\yuv", height=1080, width=1920, startfrm=0)
 
-    _ = oneimg2npy_(root_dir='D:\\DATA\\raw-yuv\\raw',
-                    out_path="D:\\DATA\\raw-yuv\\NPY\\raw-npy")
+    _ = oneimg2npy_(root_dir='D:\\DATA\\raw-yuv\\new\\raw',
+                    out_path="D:\\DATA\\raw-yuv\\new\\NPY\\raw-npy")
