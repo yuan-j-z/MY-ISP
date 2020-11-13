@@ -171,6 +171,7 @@ class raw_dataset(Dataset):
 
         return source, target
 
+#################################################################################
 class isp_dataset(Dataset):
     def __init__(self, root_dir, crop_size, is_train=True):
 
@@ -297,8 +298,6 @@ class isp_all_dataset(Dataset):
 
     def __getitem__(self, index):
 
-        # index = 100
-
         raw_path = str(self.raw[index], encoding="utf-8")
         rgb_path = str(self.rgb[index], encoding="utf-8")
 
@@ -422,23 +421,17 @@ class level_dataset(Dataset):
         #     source = raw[:, i:i + self.crop_size * 4, j:j + self.crop_size * 4]
         #     target = rgb[:, i * 2:(i + self.crop_size * 4) * 2, j * 2:(j + self.crop_size * 4) * 2]
 
-        "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"
-        i = torch.randint(0, h - self.crop_size + 1, (1,)).item()
-        j = torch.randint(0, w - self.crop_size + 1, (1,)).item()
-        source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
-        target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
-
-        # if self.is_train:
-        #     "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"
-        #     i = torch.randint(0, h - self.crop_size + 1, (1,)).item()
-        #     j = torch.randint(0, w - self.crop_size + 1, (1,)).item()
-        #     source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
-        #     target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
-        # else:
-        #     i = (h - self.crop_size) // 2
-        #     j = (w - self.crop_size) // 2
-        #     source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
-        #     target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
+        if self.is_train:
+            "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"
+            i = torch.randint(0, h - self.crop_size + 1, (1,)).item()
+            j = torch.randint(0, w - self.crop_size + 1, (1,)).item()
+            source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
+            target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
+        else:
+            i = (h - self.crop_size) // 2
+            j = (w - self.crop_size) // 2
+            source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
+            target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
 
         _, hh, ww = target.shape
         target = cv2.resize(np.transpose(target, (1, 2, 0)), (int(ww // self.scale), int(hh // self.scale)), interpolation=cv2.INTER_CUBIC)
@@ -479,45 +472,45 @@ class level_dataset(Dataset):
 
         return source, target
 
-if __name__ == "__main__":
-
-    import torch.nn as nn
-    def edge_conv2d(im):
-        # 用nn.Conv2d定义卷积操作
-        conv_op = nn.Conv2d(4, 3, kernel_size=3, padding=1, bias=False)
-
-        sobel_kernel = torch.tensor(((-1, -1, -1), (-1, 8, -1), (-1, -1, -1)), dtype=torch.float32)
-        sobel_kernel = torch.reshape(sobel_kernel, (1, 1, 3, 3))
-        sobel_kernel = sobel_kernel.repeat(3, 4, 1, 1)
-        conv_op.weight.data = sobel_kernel.cuda()
-        edge_detect = conv_op(im)
-
-        return edge_detect
-
-    root_dir = '/media/ps/2tb/yjz/MY-ISP/data/val_all.txt'
-
-    "# 不分级训练"
-    dataset = isp_all_dataset(root_dir=root_dir, crop_size=224, is_train=False)
-
-    "# 分级训练"
-    # level = 2
-    # scale = 2 ** level
-    # dataset = level_dataset(root_dir=root_dir, crop_size=64, scale=scale, is_train=False)
-
-    loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=1, pin_memory=True, drop_last=False)
-
-    for idx, (source, target) in enumerate(loader):
-        print(idx)
-
-        # source = source.cuda(non_blocking=True)
-        # out = edge_conv2d(source)
-        #
-        # output = out.permute(0, 2, 3, 1).cpu().data.numpy()
-        # output = np.minimum(np.maximum(output, 0), 1)
-        # output = (output[0, :, :, :] * 255.).astype(np.uint8)
-        # output_bgr = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
-        # cv2.imwrite("out2.jpg", output_bgr)
-        # print(out.shape)
-        #
-        # # print(source.shape, H_lr.shape, target.shape)
-        # # print(list[0].shape, list[1].shape, list[2].shape, list[3].shape)
+# if __name__ == "__main__":
+#
+#     import torch.nn as nn
+#     def edge_conv2d(im):
+#         # 用nn.Conv2d定义卷积操作
+#         conv_op = nn.Conv2d(4, 3, kernel_size=3, padding=1, bias=False)
+#
+#         sobel_kernel = torch.tensor(((-1, -1, -1), (-1, 8, -1), (-1, -1, -1)), dtype=torch.float32)
+#         sobel_kernel = torch.reshape(sobel_kernel, (1, 1, 3, 3))
+#         sobel_kernel = sobel_kernel.repeat(3, 4, 1, 1)
+#         conv_op.weight.data = sobel_kernel.cuda()
+#         edge_detect = conv_op(im)
+#
+#         return edge_detect
+#
+#     root_dir = '/media/ps/2tb/yjz/MY-ISP/data/val_all.txt'
+#
+#     "# 不分级训练"
+#     dataset = isp_all_dataset(root_dir=root_dir, crop_size=224, is_train=False)
+#
+#     "# 分级训练"
+#     # level = 2
+#     # scale = 2 ** level
+#     # dataset = level_dataset(root_dir=root_dir, crop_size=64, scale=scale, is_train=False)
+#
+#     loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=1, pin_memory=True, drop_last=False)
+#
+#     for idx, (source, target) in enumerate(loader):
+#         print(idx)
+#
+#         # source = source.cuda(non_blocking=True)
+#         # out = edge_conv2d(source)
+#         #
+#         # output = out.permute(0, 2, 3, 1).cpu().data.numpy()
+#         # output = np.minimum(np.maximum(output, 0), 1)
+#         # output = (output[0, :, :, :] * 255.).astype(np.uint8)
+#         # output_bgr = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+#         # cv2.imwrite("out2.jpg", output_bgr)
+#         # print(out.shape)
+#         #
+#         # # print(source.shape, H_lr.shape, target.shape)
+#         # # print(list[0].shape, list[1].shape, list[2].shape, list[3].shape)

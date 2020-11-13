@@ -481,9 +481,6 @@ class PyNET_smaller(nn.Module):
 
     def forward(self, x):
 
-        global conv_t3a, conv_t3b, conv_t2a, conv_t2b, conv_t1a, conv_t1b, conv_t0, \
-            output_l0, output_l1, output_l2, output_l3, output_l4, enhanced
-
         # R = self.pack(x, R=1)
         # Gr = self.pack(x, Gr=1)
         # Gb = self.pack(x, Gb=1)
@@ -638,14 +635,224 @@ class UpsampleConvLayer(torch.nn.Module):
 
         return out
 
+'# yaunjianzhong@2020-06-03'
+class Residual_SE_Block(nn.Module):
 
-# img = torch.rand((1, 1, 1056, 1920))
-# model = PyNET_smaller(level=0, instance_norm=True, instance_norm_level_1=True)
+    def __init__(self, inchannel, outchannel, stride=1, shortcut=None):
+        super(Residual_SE_Block, self).__init__()
+        self.left = nn.Sequential(
+            nn.Conv2d(inchannel, outchannel, kernel_size=3, stride=stride, padding=1, bias=False),
+            nn.BatchNorm2d(outchannel),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(outchannel, outchannel, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(outchannel),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(outchannel, outchannel, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(outchannel))
+
+        self.relu = nn.ReLU(inplace=True)
+        self.right = shortcut
+        self.globalAvgPool = nn.AdaptiveAvgPool2d(1)
+        # self.fc1 = nn.Linear(in_features=outchannel, out_features=outchannel)
+        self.conv = nn.Conv2d(in_channels=outchannel, out_channels=outchannel, kernel_size=1)
+
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        residual = x
+
+        out = self.left(x)
+
+        if self.right is not None:
+            residual = self.right(x)
+
+        original_out = out
+        out = self.globalAvgPool(out)
+
+        # out = out.view(out.size(0), -1)
+        # out = self.fc1(out)
+        # out = self.sigmoid(out)
+        # out = out.view(out.size(0), out.size(1), 1, 1)
+
+        out = self.conv(out)
+
+        out = out * original_out
+
+        out += residual
+        out = self.relu(out)
+
+        return out
+
+class SE_ResNet(nn.Module):
+
+    def __init__(self, level, inchannel = 4, outchannel = 3, channel = 64):
+        self.inplanes = channel
+
+        super(SE_ResNet, self).__init__()
+
+        self.level = level
+
+        block = Residual_SE_Block
+        Layers = [3, 4, 6, 3]
+        self.rgb_resnet_features = nn.Sequential(
+            self._make_layer(block, inchannel, channel, Layers[0], stride=2),
+            self._make_layer(block, channel, channel * 2, Layers[1], stride=2),
+            self._make_layer(block, channel * 2, channel * 4, Layers[2], stride=2),
+            self._make_layer(block, channel * 4, channel * 8, Layers[3], stride=2))
+
+        self.Relu = nn.ReLU(inplace=True)
+        self.sigmoid = nn.Sigmoid()
+        #################################################################################################
+        self.features = nn.Sequential(
+            nn.AvgPool2d(kernel_size=1, stride=1),
+            nn.ConvTranspose2d(channel * 8 , channel * 4, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(channel * 4),
+            nn.ReLU(inplace=True),
+            nn.AvgPool2d(kernel_size=3, stride=1, padding=1),
+            nn.ConvTranspose2d(channel * 8 , channel * 2, kernel_size=3, stride=4, padding=1, output_padding=3),
+            nn.BatchNorm2d(channel * 2),
+            nn.ReLU(inplace=True),
+            nn.AvgPool2d(kernel_size=5, stride=1, padding=2),
+            nn.ConvTranspose2d(channel * 8 , channel, kernel_size=3, stride=8, padding=1, output_padding=7),
+            nn.BatchNorm2d(channel),
+            nn.ReLU(inplace=True),
+            nn.AvgPool2d(kernel_size=7, stride=1, padding=3),
+            nn.ConvTranspose2d(channel * 8 , channel // 2, kernel_size=3, stride=16, padding=1, output_padding=15),
+            nn.BatchNorm2d(channel // 2),
+            nn.ReLU(inplace=True))
+        #################################################################################################
+        #################################################################################################
+
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+        self.Out5_conv = nn.Conv2d(channel * 8 , outchannel, kernel_size=3, padding=1, stride=1, bias=True)
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+        self.Deconv4 = nn.ConvTranspose2d(channel * 8 , channel * 4, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False)
+        self.Conv4 = nn.Conv2d(channel * 8 , channel * 4, kernel_size=3, padding=2, dilation=2, bias=False)
+        self.Bn4 = nn.BatchNorm2d(channel * 4)
+
+        self.Out4_conv = nn.Conv2d(channel * 4, outchannel, kernel_size=3, padding=1, stride=1, bias=True)
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+        self.Deconv3 = nn.ConvTranspose2d(channel * 4, channel * 2, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False)
+        self.Conv3 = nn.Conv2d(channel * 4, channel * 2, kernel_size=3, padding=4, dilation=4, bias=False)
+        self.Bn3 = nn.BatchNorm2d(channel * 2)
+
+        self.Out3_conv = nn.Conv2d(channel * 2, outchannel, kernel_size=3, padding=1, stride=1, bias=True)
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+        self.Deconv2 = nn.ConvTranspose2d(channel * 2, channel, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False)
+        self.Conv2 = nn.Conv2d(channel * 2, channel, kernel_size=3, padding=6, dilation=6, bias=False)
+        self.Bn2 = nn.BatchNorm2d(channel)
+
+        self.Out2_conv = nn.Conv2d(channel, outchannel, kernel_size=3, padding=1, stride=1, bias=True)
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+        self.Deconv1 = nn.ConvTranspose2d(channel, channel // 2, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False)
+        self.Conv1 = nn.Conv2d(channel, channel // 2, kernel_size=3, padding=1, bias=False)
+        self.Bn1 = nn.BatchNorm2d(channel // 2)
+
+        self.Out1_conv = nn.Conv2d(channel // 2, outchannel, kernel_size=3, padding=1, bias=True)
+
+        """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+        self.Deconv0 = nn.ConvTranspose2d(channel // 2, outchannel, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False)
+        self.Conv0 = nn.Conv2d(outchannel, outchannel, kernel_size=3, padding=1, bias=True)
+
+
+    def _make_layer(self, block, inchannel, outchannel, block_num, stride=1):
+        shortcut = None
+        if stride != 1 or self.inplanes == outchannel:
+            shortcut = nn.Sequential(
+                nn.Conv2d(inchannel, outchannel, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(outchannel))
+
+        layers = []
+
+        layers.append(block(inchannel, outchannel, stride, shortcut))
+
+        for i in range(1, block_num):
+            layers.append(block(outchannel, outchannel))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, rgb):
+
+        feature1 = self.rgb_resnet_features[:1](rgb)
+        feature2 = self.rgb_resnet_features[1:2](feature1)
+        feature3 = self.rgb_resnet_features[2:3](feature2)
+        feature4 = self.rgb_resnet_features[3:4](feature3)
+
+        out5 = self.sigmoid(self.Out5_conv(feature4))
+
+        if self.level < 5:
+            b4 = self.features[:4](feature4)
+            a_level4 = self.Deconv4(feature4)
+            a_level4 = torch.cat([a_level4, b4], dim=1)
+            a_level4 = self.Conv4(a_level4)
+            a_level4 = self.Bn4(a_level4)
+            a_level4 = a_level4 + feature3
+            a_level4 = self.Relu(a_level4)
+
+            out4 = self.sigmoid(self.Out4_conv(a_level4))
+        if self.level < 4:
+            b3 = self.features[4:8](feature4)
+            a_level3 = self.Deconv3(a_level4)
+            a_level3 = torch.cat([a_level3, b3], dim=1)
+            a_level3 = self.Conv3(a_level3)
+            a_level3 = self.Bn3(a_level3)
+            a_level3 = a_level3 + feature2
+            a_level3 = self.sigmoid(self.Relu(a_level3))
+
+            out3 = self.Out3_conv(a_level3)
+        if self.level < 3:
+            b2 = self.features[8:12](feature4)
+            a_level2 = self.Deconv2(a_level3)
+            a_level2 = torch.cat([a_level2, b2], dim=1)
+            a_level2 = self.Conv2(a_level2)
+            a_level2 = self.Bn2(a_level2)
+            a_level2 = a_level2 + feature1
+            a_level2 = self.Relu(a_level2)
+
+            out2 = self.sigmoid(self.Out2_conv(a_level2))
+        if self.level < 2:
+            b1 = self.features[12:16](feature4)
+            a_level1 = self.Deconv1(a_level2)
+            a_level1 = torch.cat([a_level1, b1], dim=1)
+            a_level1 = self.Conv1(a_level1)
+            a_level1 = self.Bn1(a_level1)
+            a_level1 = self.Relu(a_level1)
+
+            out1 = self.sigmoid(self.Out1_conv(a_level1))
+        if self.level < 1:
+            a_level0 = self.Deconv0(a_level1)
+            a_level0 = self.Conv0(a_level0)
+
+            out0 = self.sigmoid(self.sigmoid(a_level0))
+
+        if self.level == 5:
+            enhanced = out5
+        if self.level == 4:
+            enhanced = out4
+        if self.level == 3:
+            enhanced = out3
+        if self.level == 2:
+            enhanced = out2
+        if self.level == 1:
+            enhanced = out1
+        if self.level == 0:
+            enhanced = out0
+
+        return enhanced
+
+# img = torch.rand((1, 4, 528, 960))
+# model = SE_ResNet(level=0, channel=64)
 # out = model(img)
 # print(out.shape)
-
+#
 # from torchstat import stat
 #
-# model = PyNET_smaller(level=0, instance_norm=True, instance_norm_level_1=True)
+# # model = PyNET_smaller(level=0, channel=16, instance_norm=True, instance_norm_level_1=True)
+# model = SE_ResNet(level=0, channel=16)
 #
-# stat(model, (1, 1056, 1920))
+# stat(model, (4, 528, 960))

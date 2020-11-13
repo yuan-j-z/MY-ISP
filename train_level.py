@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument('-t', '--train-dir', help='train path', default='./data/new/train.txt')
     parser.add_argument('-v', '--valid-dir', help='val path', default='./data/new/val.txt')
     parser.add_argument('-n', '--data-type', help='data type', choices=['rgbdata'], default='rgbdata', type=str)
-    parser.add_argument('-c', '--crop-size', help='random crop size', default=256, type=int)
+    parser.add_argument('-c', '--crop-size', help='random crop size', default=128, type=int)
 
     "augmentations"
     parser.add_argument("--use_moa", action="store_true", default=True)
@@ -40,7 +40,8 @@ def parse_args():
     parser.add_argument("--aux_alpha", type=float, default=1.2)
 
     "models"
-    parser.add_argument('-o', '--outtype', help='output type', choices=['PyNET_smaller'], default='PyNET_smaller', type=str)
+    parser.add_argument('-o', '--outtype', help='output type', choices=['PyNET_smaller', 'SE_ResNet'],
+                        default='PyNET_smaller', type=str)
     parser.add_argument('-C', '--channel', help='the input of channel', default=32, type=int)
     parser.add_argument('--model-path', help='model save path', default='./model/PyNET_smaller')
 
@@ -57,7 +58,7 @@ def parse_args():
     "misc"
     parser.add_argument('--half', default=False)
     parser.add_argument('--apex', default=False)
-    parser.add_argument('--environ', default="0, 3", type=str)
+    parser.add_argument('--environ', default="0, 1", type=str)
     parser.add_argument('--teacher', default=None, type=str)
     parser.add_argument('--resume-ckpt',  default=None, type=str)
     parser.add_argument('--level', help='level numbers', default=5, type=int)
@@ -68,7 +69,7 @@ def parse_args():
     return parser.parse_args()
 
 def save_epoch_result(epoch, idx, target, val_output, teacher_out=None, train=False):
-    if params.level <= 1 and (epoch + 1) % 100 == 0 and (idx + 1) % 2 == 0:
+    if params.level == 0 and (epoch + 1) % 100 == 0 and (idx + 1) % 2 == 0:
         if train:
             path1 = os.path.join(params.model_path, 'level{}'.format(params.level), 'train_result')
             path2 = os.path.join(path1, 'epoch' + str(epoch + 1))

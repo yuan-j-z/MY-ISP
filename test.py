@@ -5,6 +5,7 @@ import os, cv2
 import time
 import numpy as np
 from Nets.SR_Net import *
+from Nets.PYNET import PyNET_smaller
 from collections import OrderedDict
 from torch.utils.data import Dataset, DataLoader
 
@@ -33,12 +34,12 @@ class TEST_DATA(Dataset):
         source = (test_raw / 4095.).astype(np.float32)
 
         '# Unet的设计导致要32对齐'
-        # _, h, w = source.shape  # H W C
-        # if w % 16 != 0:
-        #     w = (w // 16) * 16
-        # if h % 16 != 0:
-        #     h = (h // 16) * 16
-        # source = source[:, :h, :w]
+        _, h, w = source.shape  # H W C
+        if w % 16 != 0:
+            w = (w // 16) * 16
+        if h % 16 != 0:
+            h = (h // 16) * 16
+        source = source[:, :h, :w]
 
         '# saving the input'
         source_a = (source * 255.).astype(np.uint8)
@@ -90,15 +91,15 @@ def test(test_dir, count, model, weights_dir, save_path):
             print("saving the {} images\n".format(str(idx + 1)))
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+    os.environ["CUDA_VISIBLE_DEVICES"] = '3'
 
-    test_dir = '/media/ps/2tb/yjz/data/ISP/NPY/test_ray-npy'
-    weights_dir = './model/MSRN/best_psnr.pt'
-    save_path = './model/MSRN/results'
+    test_dir = '/media/ps/2tb/yjz/data/ISP/NPY/test_raw-npy'
+    weights_dir = './model/PyNET_smaller/level0/weights/best_psnr/best_psnr.pt'
+    save_path = './model/PyNET_smaller/level0/results'
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
 
 
     count = 1
-    model = MSRN_edge()
+    model = PyNET_smaller(level=0, instance_norm=True, instance_norm_level_1=True)
     test(test_dir=test_dir, count=count, model=model, weights_dir=weights_dir, save_path=save_path)

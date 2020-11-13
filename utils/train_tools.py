@@ -25,6 +25,8 @@ def selet_model(outtype, channel=64):
 def selet_level_model(outtype, level, channel=64):
     if outtype == 'PyNET_smaller':
         model = PyNET_smaller(level=level, channel=channel, instance_norm=True, instance_norm_level_1=True)
+    elif outtype == 'SE_ResNet':
+        model = SE_ResNet(level=level, channel=channel)
     else:
         assert False, 'Not supported outtype:{}'.format(outtype)
     print("\033[32musing %s \033[0m" % (outtype + "_level" + str(level)))

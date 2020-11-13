@@ -60,7 +60,7 @@ def parse_args():
     "misc"
     parser.add_argument('--half', default=False)
     parser.add_argument('--apex', default=True)
-    parser.add_argument('--environ', default="1", type=str)
+    parser.add_argument('--environ', default="3", type=str)
     parser.add_argument('--teacher', default=None, type=str)
     parser.add_argument('--resume-ckpt',  default=None, type=str)
     parser.add_argument('--cuda', help='use cuda', action='store_true', default=True)
@@ -70,7 +70,7 @@ def parse_args():
     return parser.parse_args()
 
 def save_epoch_result(epoch, idx, target, val_output, teacher_out=None, train=False):
-    if (epoch + 1) % 10 == 0 and (idx + 1) % 2 == 0:
+    if (epoch + 1) % 100 == 0 and (idx + 1) % 2 == 0:
         if train:
             path1 = os.path.join(params.model_path, 'train_result')
             path2 = os.path.join(path1, 'epoch' + str(epoch + 1))
