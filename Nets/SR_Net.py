@@ -1,6 +1,7 @@
 # -*- coding:utf8 -*-
 import torch
 import torch.nn as nn
+from torch.nn import init
 
 def edge_conv2d(im):
     # 用nn.Conv2d定义卷积操作
@@ -354,11 +355,20 @@ class Unet_all(nn.Module):
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                m.weight.data.normal_(0.0, 0.02)
-                if m.bias is not None:
-                    m.bias.data.normal_(0.0, 0.02)
+                init.xavier_uniform(m.weight.data)
+                if m.bias:
+                    init.constant(m.bias, 0)
             if isinstance(m, nn.ConvTranspose2d):
-                m.weight.data.normal_(0.0, 0.02)
+                init.xavier_uniform(m.weight.data)
+
+    # def _initialize_weights(self):
+    #     for m in self.modules():
+    #         if isinstance(m, nn.Conv2d):
+    #             m.weight.data.normal_(0.0, 0.02)
+    #             if m.bias is not None:
+    #                 m.bias.data.normal_(0.0, 0.02)
+    #         if isinstance(m, nn.ConvTranspose2d):
+    #             m.weight.data.normal_(0.0, 0.02)
 
     def lrelu(self, x):
         return torch.max(0.1 * x, x)

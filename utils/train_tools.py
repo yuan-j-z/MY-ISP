@@ -25,6 +25,8 @@ def selet_model(outtype, channel=64):
 def selet_level_model(outtype, level, channel=64):
     if outtype == 'PyNET_smaller':
         model = PyNET_smaller(level=level, channel=channel, instance_norm=True, instance_norm_level_1=True)
+    if outtype == 'PyNET_smaller_edge':
+        model = PyNET_smaller_edge(level=level, channel=channel, instance_norm=True, instance_norm_level_1=True)
     elif outtype == 'SE_ResNet':
         model = SE_ResNet(level=level, channel=channel)
     else:

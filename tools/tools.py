@@ -171,5 +171,5 @@ def oneimg2npy_(root_dir, out_path):
 if __name__ == '__main__':
     # _ = yuv2bgr(video_dir="D:\\DATA\\raw-yuv\\new\\yuv", height=1080, width=1920, startfrm=0)
 
-    _ = oneimg2npy_(root_dir='D:\\DATA\\raw-yuv\\new\\raw',
-                    out_path="D:\\DATA\\raw-yuv\\new\\NPY\\raw-npy")
+    _ = oneimg2npy_(root_dir='/media/ps/2tb/yjz/data/ISP/NPY/test_raw',
+                    out_path="/media/ps/2tb/yjz/data/ISP/NPY/test-raw-npy")

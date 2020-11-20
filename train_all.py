@@ -26,8 +26,8 @@ def parse_args():
     parser = ArgumentParser(description='PyTorch implementation of denoise from Yuan. (2020)')
 
     "dataset"
-    parser.add_argument('-t', '--train-dir', help='train path', default='./data/train_all.txt')
-    parser.add_argument('-v', '--valid-dir', help='val path', default='./data/val_all.txt')
+    parser.add_argument('-t', '--train-dir', help='train path', default='./data/train_part.txt')
+    parser.add_argument('-v', '--valid-dir', help='val path', default='./data/val_part.txt')
     parser.add_argument('-n', '--data-type', help='data type', choices=['rgbdata'], default='rgbdata', type=str)
     parser.add_argument('-c', '--crop-size', help='random crop size', default=224, type=int)
 
@@ -44,7 +44,7 @@ def parse_args():
     parser.add_argument('-o', '--outtype', help='output type', choices=['Unet_all'],
                         default='Unet_all', type=str)
     parser.add_argument('-C', '--channel', help='the input of channel', default=32, type=int)
-    parser.add_argument('--model-path', help='model save path', default='./model/Unet_all')
+    parser.add_argument('--model-path', help='model save path', default='./model/Unet_part')
 
     "training setups"
     parser.add_argument('-l', '--loss', choices=['l1', 'l2'], default='l1', type=str)
@@ -59,10 +59,11 @@ def parse_args():
 
     "misc"
     parser.add_argument('--half', default=False)
-    parser.add_argument('--apex', default=True)
-    parser.add_argument('--environ', default="3", type=str)
+    parser.add_argument('--apex', default=False)
+    parser.add_argument('--environ', default="1", type=str)
     parser.add_argument('--teacher', default=None, type=str)
     parser.add_argument('--resume-ckpt',  default=None, type=str)
+    # parser.add_argument('--resume-ckpt',  default='./model/Unet_SR-1/weights/best_psnr/best_psnr.pt', type=str)
     parser.add_argument('--cuda', help='use cuda', action='store_true', default=True)
     parser.add_argument('--report-interval', help='batch report interval', default=0, type=int)
     parser.add_argument('--plot-stats', help='plot stats after every epoch', action='store_true', default=True)
@@ -152,9 +153,9 @@ def train_model():
             print(teacher_model.load_state_dict(torch.load(params.teacher), strict=True))
 
         if params.resume_ckpt:
-            model.load_state_dict(torch.load(params.resume_ckpt), strict=True)
+            model.load_state_dict(torch.load(params.resume_ckpt), strict=False)
             print("loading the check point weights!")
-            print(model.load_state_dict(torch.load(params.resume_ckpt), strict=True))
+            print(model.load_state_dict(torch.load(params.resume_ckpt), strict=False))
 
     if params.apex:
         model, optimizer = amp.initialize(model, optim, opt_level="O1")  # 这里是“欧一”

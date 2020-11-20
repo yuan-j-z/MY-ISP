@@ -94,12 +94,12 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = '3'
 
     test_dir = '/media/ps/2tb/yjz/data/ISP/NPY/test_raw-npy'
-    weights_dir = './model/PyNET_smaller/level0/weights/best_psnr/best_psnr.pt'
-    save_path = './model/PyNET_smaller/level0/results'
+    weights_dir = './model/PyNET_smaller-8/level0/weights/best_psnr/best_psnr.pt'
+    save_path = './model/PyNET_smaller-8/level0/results'
     if not os.path.isdir(save_path):
         os.mkdir(save_path)
 
 
     count = 1
-    model = PyNET_smaller(level=0, instance_norm=True, instance_norm_level_1=True)
+    model = PyNET_smaller(level=0, channel=8, instance_norm=True, instance_norm_level_1=True)
     test(test_dir=test_dir, count=count, model=model, weights_dir=weights_dir, save_path=save_path)

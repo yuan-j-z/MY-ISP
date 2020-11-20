@@ -272,8 +272,8 @@ def extract_bayer_channels(raw):
     ch_R  = raw[0::2, 0::2]
     ch_Gr = raw[1::2, 0::2]
 
-    RAW_combined = np.dstack((ch_R, ch_Gr, ch_Gb, ch_B))
-    # RAW_combined = np.dstack((ch_B, ch_Gb, ch_R, ch_Gr))
+    # RAW_combined = np.dstack((ch_R, ch_Gr, ch_Gb, ch_B))
+    RAW_combined = np.dstack((ch_B, ch_Gb, ch_R, ch_Gr))
     RAW_norm = RAW_combined.astype(np.float32) / (4 * 255)
 
     return RAW_norm
@@ -381,7 +381,7 @@ class isp_all_dataset(Dataset):
 
         return source, target
 
-#################################################################################
+'#################################################################################'
 
 class level_dataset(Dataset):
     def __init__(self, root_dir, crop_size, scale, is_train=True):
@@ -408,18 +408,6 @@ class level_dataset(Dataset):
         rgb = np.load(str(self.rgb[index], encoding="utf-8"))
 
         _, h, w = raw.shape
-
-        # if self.is_train:
-        #     "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"
-        #     i = torch.randint(0, h - self.crop_size + 1, (1,)).item()
-        #     j = torch.randint(0, w - self.crop_size + 1, (1,)).item()
-        #     source = raw[:, i:i + self.crop_size, j:j + self.crop_size]
-        #     target = rgb[:, i * 2:(i + self.crop_size) * 2, j * 2:(j + self.crop_size) * 2]
-        # else:
-        #     i = (h - self.crop_size) // 2
-        #     j = (w - self.crop_size) // 2
-        #     source = raw[:, i:i + self.crop_size * 4, j:j + self.crop_size * 4]
-        #     target = rgb[:, i * 2:(i + self.crop_size * 4) * 2, j * 2:(j + self.crop_size * 4) * 2]
 
         if self.is_train:
             "# 随机裁剪patch送入模型(self.crop_size, self.crop_size)"

@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument("--aux_alpha", type=float, default=1.2)
 
     "models"
-    parser.add_argument('-o', '--outtype', help='output type', choices=['PyNET_smaller', 'SE_ResNet'],
+    parser.add_argument('-o', '--outtype', help='output type', choices=['PyNET_smaller', 'PyNET_smaller_edge', 'SE_ResNet'],
                         default='PyNET_smaller', type=str)
     parser.add_argument('-C', '--channel', help='the input of channel', default=32, type=int)
     parser.add_argument('--model-path', help='model save path', default='./model/PyNET_smaller')
@@ -58,7 +58,7 @@ def parse_args():
     "misc"
     parser.add_argument('--half', default=False)
     parser.add_argument('--apex', default=False)
-    parser.add_argument('--environ', default="0, 1", type=str)
+    parser.add_argument('--environ', default="0, 3", type=str)
     parser.add_argument('--teacher', default=None, type=str)
     parser.add_argument('--resume-ckpt',  default=None, type=str)
     parser.add_argument('--level', help='level numbers', default=5, type=int)
