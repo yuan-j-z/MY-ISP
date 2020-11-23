@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="ps@10.10.16.248:22">
+    <serverData>
+      <paths name="ps@10.10.16.248:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/media/ps/2tb/yjz/MY-ISP" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+          <excludedPaths>
+            <excludedPath path="/media/ps/2tb/yjz/MY-ISP/model/PyNET_smaller-16/level0/weights/best_psnr/best_psnr.pt" />
+          </excludedPaths>
+        </serverdata>
+      </paths>
+      <paths name="xm">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>

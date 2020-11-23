@@ -7,11 +7,11 @@ import torch.nn.functional as F
 from collections import OrderedDict
 
 def edge_conv2d(im):
-    conv_op = nn.Conv2d(4, 4, kernel_size=3, padding=1, bias=False)
+    conv_op = nn.Conv2d(4, 3, kernel_size=3, padding=1, bias=False)
 
     sobel_kernel = torch.tensor(((-1, -1, -1), (-1, 8, -1), (-1, -1, -1)), dtype=torch.float32)
     sobel_kernel = torch.reshape(sobel_kernel, (1, 1, 3, 3))
-    sobel_kernel = sobel_kernel.repeat(4, 4, 1, 1)
+    sobel_kernel = sobel_kernel.repeat(3, 4, 1, 1)
     conv_op.weight.data = sobel_kernel.cuda()
     edge_detect = conv_op(im)
 
@@ -742,7 +742,7 @@ class PyNET_smaller_edge(nn.Module):
 
         '# add the information of edge'
         edge = edge_conv2d(x)
-        conv_l1_out = conv_l1_out + edge
+        conv_l1_out = conv_l1_out + edge * 0.2
 
         output_l1 = self.output_l1(conv_l1_out)
 
@@ -755,7 +755,7 @@ class PyNET_smaller_edge(nn.Module):
         '# add the information of edge'
         edge = edge_conv2d(x)
         edge = self.edge(edge)
-        conv_l0_d1 = conv_l0_d1 + edge
+        conv_l0_d1 = conv_l0_d1 + edge * 0.2
 
         output_l0 = self.output_l0(conv_l0_d1)
 
@@ -1140,7 +1140,7 @@ class SE_ResNet(nn.Module):
         return enhanced
 
 # img = torch.rand((1, 4, 528, 960))
-# model = PyNET_smaller(level=0, channel=32, instance_norm=True, instance_norm_level_1=True)
+# model = PyNET_smaller_edge(level=1, channel=32, instance_norm=True, instance_norm_level_1=True)
 # # model = SE_ResNet(level=0, channel=64)
 # out = model(img)
 # print(out.shape)
